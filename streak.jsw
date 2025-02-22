@@ -1,0 +1,86 @@
+import wixData from 'wix-data';
+import { currentMember } from 'wix-members-backend';
+
+export async function updateStreak() {
+    try {
+        const member = await currentMember.getMember();
+        if (!member) throw new Error("User not logged in.");
+
+        const userId = member._id;
+        const today = new Date();
+        const todayStr = today.toISOString().split("T")[0]; // YYYY-MM-DD format
+        const currentYear = today.getFullYear();
+        const startOfWeek = new Date(today);
+        startOfWeek.setDate(today.getDate() - today.getDay());
+
+        // Fetch user's streak data
+        const result = await wixData.query("Streaks").eq("_id", userId).find();
+        let streakData = result.items[0];
+        console.log(streakData)
+        if (!streakData) {
+            console.log('no streak data')
+            // New user - create streak entry
+            const weekLogins = Array(7).fill(false);
+            weekLogins[today.getDay()] = true; // Mark today as logged in
+            await wixData.insert("Streaks", {
+                _id: userId,
+                streak: 1,
+                lastLogin: todayStr,
+                lastYear: currentYear,
+                weekLogins
+            });
+            return { streak: 1, weekLogins };
+        }
+
+        const lastLogin = new Date(streakData.lastLogin);
+        const lastLoginYear = lastLogin.getFullYear();
+        const lastLoginDate = lastLogin.toISOString().split("T")[0];
+        const diffDays = Math.floor((today - lastLogin) / (1000 * 60 * 60 * 24));
+
+        // **New Year Reset**
+        if (lastLoginYear < currentYear) {
+            streakData.streak = 1;
+            streakData.weekLogins = Array(7).fill(false);
+            console.log('new year reset')
+
+        }
+
+        // **Weekly Reset** - If the week changed, reset weekly logins
+        const lastWeekStart = new Date(lastLogin);
+        lastWeekStart.setDate(lastLogin.getDate() - lastLogin.getDay());
+
+        if (resetToMidnight(lastWeekStart).getTime() !== resetToMidnight(startOfWeek).getTime()) {
+            streakData.weekLogins = Array(7).fill(false);
+            console.log('Reset week login');
+        }
+
+        // Update today's login status
+        streakData.weekLogins[today.getDay()] = true;
+
+        // If user already logged in today, return without updating
+        if (lastLoginDate === todayStr) {
+            return { streak: streakData.streak, weekLogins: streakData.weekLogins };
+        }
+
+        // **Streak Logic**
+        if (diffDays === 1) {
+            streakData.streak += 1; // Continue streak
+        } else if (lastLoginYear === currentYear) {
+            streakData.streak = 1; // Reset only if it's not a new year reset
+        }
+
+        // Save updates
+        streakData.lastLogin = todayStr;
+        streakData.lastYear = currentYear;
+        await wixData.update("Streaks", streakData);
+
+        return { streak: streakData.streak, weekLogins: streakData.weekLogins };
+    } catch (error) {
+        console.error("Error updating streak:", error);
+        return { streak: 0, weekLogins: Array(7).fill(false) };
+    }
+}
+
+function resetToMidnight(date) {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate()); // Resets time to 00:00:00
+}
