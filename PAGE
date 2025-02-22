@@ -1,0 +1,37 @@
+import { updateStreak } from 'backend/streak';
+const weekDays = ["S", "M", "T", "W", "T", "F", "S"];
+
+$w.onReady(async function () {
+    try {
+        const { streak, weekLogins } = await updateStreak();
+
+        $w("#streakText").text = `${streak}`;
+
+        const jsonArray = weekLogins.map((status, index) => ({
+            _id: `id${index + 1}`,
+            status: status
+        }));
+
+        $w("#repeater1").data = jsonArray;
+
+    } catch (error) {
+        console.error("Failed to update streak:", error);
+    }
+    manageRepater()
+});
+
+function manageRepater(params) {
+    $w("#repeater1").onItemReady(($item, itemData, index) => {
+        $item("#dayTextCap").text = weekDays[index]
+        if (itemData.status) {
+            //
+            $item("#dayTextCap").customClassList.remove('gr')
+
+        } else {
+            $item("#dayTextCap").customClassList.add('gr')
+
+            $item("#dayTick").hide();
+            $item("#dayBox").customClassList.add('grey')
+        }
+    })
+}
